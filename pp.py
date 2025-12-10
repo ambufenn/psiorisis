@@ -2,221 +2,275 @@ import streamlit as st
 from google import genai
 from google.genai import types
 import numpy as np
+import pandas as pd
 from datetime import datetime
 import random 
 
 # --- 0. Setup Klien Gemini & Konfigurasi ---
-# PENTING: Ganti "YOUR_GEMINI_API_KEY" dengan kunci Anda.
 try:
-    # Dalam lingkungan Streamlit Cloud, Anda harus menyimpan kunci di st.secrets
-    API_KEY = "YOUR_GEMINI_API_KEY" # Gantilah ini!
+    # PENTING: Ganti dengan kunci API Anda. Di Streamlit Cloud, gunakan st.secrets
+    API_KEY = "YOUR_GEMINI_API_KEY" # <<< GANTI DENGAN KUNCI ASLI ANDA
     client = genai.Client(api_key=API_KEY)
     MODEL_FLASH = 'gemini-2.5-flash'
 except Exception:
     client = None
-    st.error("⚠️ Kunci API Gemini tidak valid atau tidak ditemukan. Fitur AI Summary/Coaching akan dinonaktifkan.")
-
-# --- 1. Fungsi ML dan AI Inti ---
+    # Fitur AI akan dinonaktifkan jika kunci tidak valid
+    
+# --- 1. Fungsi AI dan ML Inti ---
 
 def simulate_predict_flare_risk(data):
-    """
-    [PPS: Modul Kuratif] SIMULASI ML: Prediksi risiko Flare (Stres/Penyakit).
-    """
+    """[ML] Prediksi risiko Flare (Modul Kuratif)."""
     pain_norm = data.get('pain_score', 0) / 10
     stress_norm = data.get('stress_score', 0) / 10
-    adherence_impact = 1.0 - data.get('med_adherence', 1.0) 
     hrv_impact = 1.0 - data.get('hrv_avg', 0.8) 
-    
-    # Formula risiko yang menempatkan stres (stress_norm, hrv_impact) sebagai bobot tinggi
-    risk_score = (pain_norm * 0.2) + (stress_norm * 0.3) + (adherence_impact * 0.3) + (hrv_impact * 0.2)
-    
+    risk_score = (pain_norm * 0.25) + (stress_norm * 0.35) + (hrv_impact * 0.4) 
     return min(risk_score * 0.9, 0.99)
 
 def generate_stress_coaching_gemini(user_mood, hrv_status, time_of_day):
-    """
-    [PPS: Modul Kuratif] Fitur: Mindfulness & Relaksasi Coach (Real-Time).
-    """
-    if not client: return "⚠️ Fitur Gemini dinonaktifkan."
-
-    system_instruction = """
-    Anda adalah Stress Management Coach yang Empati untuk pasien Psoriasis Arthritis.
-    Berikan instruksi teknik relaksasi adaptif dan jelaskan relevansi sesi ini (1 paragraf).
-    Sajikan instruksi dalam 3-5 langkah yang mudah diikuti.
-    """
+    """[Gemini] Fitur: Mindfulness & Relaksasi Coach (Modul Kuratif)."""
+    if not client: return "⚠️ Layanan Gemini dinonaktifkan."
+    system_instruction = "Anda adalah Stress Management Coach yang Empati untuk pasien PsA. Berikan instruksi relaksasi adaptif, jelaskan relevansi sesi, dan sajikan instruksi dalam 3-5 langkah."
     prompt = f"Pasien melaporkan mood: '{user_mood}'. Status HRV objektif: {hrv_status}. Waktu: {time_of_day}."
-    
     config = types.GenerateContentConfig(system_instruction=system_instruction, temperature=0.7)
-    with st.spinner("Gemini sedang menyiapkan sesi coaching personal..."):
-        try:
-            response = client.models.generate_content(model=MODEL_FLASH, contents=prompt, config=config)
-            return response.text
-        except Exception:
-            return "Error dalam koneksi atau respons Gemini."
+    try:
+        response = client.models.generate_content(model=MODEL_FLASH, contents=prompt, config=config)
+        return response.text
+    except Exception:
+        return "Error dalam koneksi atau respons Gemini."
 
 def generate_clinician_summary(user_logs):
-    """
-    [PPS: Modul Integrasi] Fitur: Ringkasan Data Longitudinal untuk Dokter (Gemini).
-    """
-    if not client: return "⚠️ Fitur Gemini dinonaktifkan."
-
+    """[Gemini] Fitur: Ringkasan Data Longitudinal untuk Dokter (Modul Integrasi)."""
+    if not client: return "⚠️ Layanan Gemini dinonaktifkan."
     latest_logs = user_logs[-7:]
-    
-    summary_prompt = f"""
-    Menganalisis log kesehatan pasien selama {len(user_logs)} entri.
-    Data Log Terbaru: {latest_logs}
-    Tolong buat ringkasan status pasien (max 3 paragraf) untuk Reumatolog, menyoroti:
-    1. Tren aktivitas penyakit (Nyeri/Kekakuan).
-    2. Tingkat kepatuhan obat dan efek samping.
-    3. Pengaruh Stres (HRV) terhadap gejala dalam seminggu terakhir.
-    """
-
+    summary_prompt = f"Menganalisis log kesehatan pasien selama {len(user_logs)} entri. Data Log Terbaru: {latest_logs}. Buat ringkasan status PsA (max 3 paragraf) untuk Reumatolog, fokus pada Tren Penyakit, Kepatuhan Obat, dan Pengaruh Stres/HRV."
     config = types.GenerateContentConfig(system_instruction="Anda adalah Asisten Klinis AI. Buat ringkasan data pasien yang terstruktur dan objektif.", temperature=0.3)
-    
-    with st.spinner("Menganalisis data log dan menyusun ringkasan klinis..."):
-        try:
-            response = client.models.generate_content(model=MODEL_FLASH, contents=summary_prompt, config=config)
-            return response.text
-        except Exception:
-            return "Failed to generate AI summary."
+    try:
+        response = client.models.generate_content(model=MODEL_FLASH, contents=summary_prompt, config=config)
+        return response.text
+    except Exception:
+        return "Failed to generate AI summary."
 
-# --- 2. Session State & Input Data ---
+def generate_chatbot_response(prompt):
+    """[Gemini] Fitur: Asisten Kesehatan PsA (Character Bot)."""
+    if not client: return "Layanan Chatbot dinonaktifkan tanpa API Key."
+    
+    # System Instruction untuk membatasi peran Bot
+    system_instruction = """
+    Anda adalah Asisten Kesehatan AI yang ramah, berempati, dan berpengetahuan khusus tentang Psoriasis Arthritis (PsA) dan manajemen gaya hidup.
+    Jawab pertanyaan pasien dengan akurat, tetapi selalu tegaskan bahwa Anda BUKAN dokter dan tidak dapat memberikan saran dosis obat, diagnosis, atau penanganan darurat.
+    """
+    
+    # Kumpulkan riwayat percakapan (dari st.session_state.messages)
+    history = [
+        types.Content(role=m["role"], parts=[types.Part.from_text(m["content"])])
+        for m in st.session_state.messages
+    ]
+    
+    # Tambahkan prompt user saat ini
+    history.append(types.Content(role="user", parts=[types.Part.from_text(prompt)]))
+
+    config = types.GenerateContentConfig(system_instruction=system_instruction, temperature=0.5)
+
+    try:
+        response = client.models.generate_content(model=MODEL_FLASH, contents=history, config=config)
+        return response.text
+    except Exception:
+        return "Terjadi kesalahan saat memproses permintaan Chatbot."
+
+# --- 2. Session State & Setup Halaman ---
 
 if 'user_log' not in st.session_state:
-    st.session_state.user_log = []
+    # Memuat dummy data untuk visualisasi awal
+    st.session_state.user_log = [
+        {'timestamp': '2025-12-01 10:00', 'pain_score': 3, 'hrv_avg': 0.7, 'stress_score': 3, 'med_adherence': 1.0, 'video_rehab_status': 'Good'},
+        {'timestamp': '2025-12-03 10:00', 'pain_score': 5, 'hrv_avg': 0.4, 'stress_score': 7, 'med_adherence': 0.8, 'video_rehab_status': 'Poor_Posture'},
+        {'timestamp': '2025-12-05 10:00', 'pain_score': 4, 'hrv_avg': 0.6, 'stress_score': 5, 'med_adherence': 1.0, 'video_rehab_status': 'Fatigue'}
+    ]
+
+if 'messages' not in st.session_state:
+    st.session_state['messages'] = [{"role": "assistant", "content": "Halo! Saya Asisten Kesehatan PsA Anda. Tanyakan apa saja tentang Psoriasis Arthritis dan gaya hidup."}]
+
 
 st.set_page_config(layout="wide", page_title="PsA Intelligence System")
-st.title("🛡️ Gemini PsA Intelligence System Dashboard")
-st.caption("Implementasi Fungsionalitas PPS: Logika ML dan Gemini Dijalankan Langsung.")
-st.markdown("---")
+st.title("🛡️ Gemini PsA Intelligence System")
+st.caption("Implementasi Kode Lengkap PPS: Modul Preventif, Kuratif, Rehabilitasi, dan Integrasi.")
 
-# --- 2.1 Modul Preventif/Kuratif: Input Data Harian ---
-st.header("1. Input Data Harian & Log Gejala (Simulasi Aplikasi Mobile)")
+# Konversi log ke DataFrame untuk visualisasi
+df_log = pd.DataFrame(st.session_state.user_log)
+if not df_log.empty:
+    df_log['timestamp'] = pd.to_datetime(df_log['timestamp'])
+    df_log = df_log.sort_values('timestamp')
 
-with st.form("log_form"):
-    col1, col2, col3 = st.columns(3)
+# --- 3. Tata Letak Tab ---
 
-    with col1:
-        pain_score = st.slider("Nyeri Sendi (Skala 0-10)", 0, 10, 5, key='pain')
-        stiffness_score = st.slider("Kekakuan Pagi (Skala 0-10)", 0, 10, 5, key='stiffness')
+tab_log, tab_intervensi, tab_dashboard, tab_chatbot = st.tabs(["📝 Log & Alert", "🧠 Intervensi & Rehab", "👨‍⚕️ Dashboard Klinis", "💬 Asisten PsA"])
 
-    with col2:
-        stress_score = st.slider("Stres Subjektif (Skala 0-10)", 0, 10, 6, key='stress')
-        hrv_avg = st.slider("HRV Rata-rata (0.0=Buruk, 1.0=Baik)", 0.0, 1.0, 0.65, 0.05, key='hrv')
+# =========================================================================
+# === TAB 1: LOG HARIAN & STATUS (Modul Preventif/Kuratif)
+# =========================================================================
 
-    with col3:
-        med_adherence = st.slider("Kepatuhan Obat (%)", 0, 100, 100, 10, key='med')
-        video_rehab_status = st.selectbox(
-            "Feedback Vision/Rehab (Simulasi):", 
-            ["Good", "Poor_Posture", "Fatigue"], 
-            key='rehab_status'
-        )
+with tab_log:
+    st.header("Input Data Pasien & Prediksi Risiko")
 
-    submitted = st.form_submit_button("Simpan Log Hari Ini & Analisis", type="primary")
+    with st.form("log_form"):
+        col_input_1, col_input_2 = st.columns(2)
 
-    if submitted:
-        new_log = {
-            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M"),
-            'pain_score': pain_score,
-            'stiffness_score': stiffness_score,
-            'stress_score': stress_score,
-            'hrv_avg': hrv_avg,
-            'med_adherence': med_adherence / 100.0,
-            'video_rehab_status': video_rehab_status
-        }
-        st.session_state.user_log.append(new_log)
-        st.success(f"Log berhasil disimpan. Total {len(st.session_state.user_log)} entri.")
+        with col_input_1:
+            pain_score = st.slider("Nyeri Sendi (0-10)", 0, 10, 5, key='pain')
+            med_adherence = st.slider("Kepatuhan Obat (%)", 0, 100, 100, 10, key='med')
 
-st.markdown("---")
-
-# --- 3. Modul Kuratif: Prediksi & Alert ML ---
-st.header("2. Prediksi Risiko Flare (ML/Alert)")
-
-if st.session_state.user_log:
-    latest_data = st.session_state.user_log[-1]
-    
-    # Panggil fungsi simulasi ML (Predictive Tool)
-    risk_prob = simulate_predict_flare_risk(latest_data)
-    prob_percent = risk_prob * 100
-    
-    if risk_prob > 0.75:
-        st.error(f"🚨 ALERT TINGGI: Risiko Flare ({prob_percent:.1f}%). Pemicu utama: Stres/HRV. {random.choice(['Segera lakukan intervensi stress.', 'Hubungi klinik untuk triage.'])}")
-    elif risk_prob > 0.55:
-        st.warning(f"⚠️ RISIKO MODERAT: Risiko Flare sedang ({prob_percent:.1f}%). Fokus pada istirahat & ikuti sesi coaching.")
-    else:
-        st.success(f"Risiko Flare Rendah ({prob_percent:.1f}%).")
-
-    st.caption("*(Simulasi ML: Menggunakan Nyeri, Stres, HRV, dan Kepatuhan Obat)*")
-else:
-    st.info("Masukkan log harian untuk menjalankan prediksi.")
-
-st.markdown("---")
-
-# --- 4. Modul Intervensi Mandiri & Rehabilitasi ---
-st.header("3. Intervensi Cerdas (Gemini Coach & Rehabilitasi)")
-
-col_i1, col_i2 = st.columns(2)
-
-with col_i1:
-    st.subheader("Mindfulness & Relaksasi Coach")
-    if st.session_state.user_log and st.button("Mulai Sesi Stress Coaching (Gemini)", key='start_coaching', type='secondary'):
-        
-        current_mood = "Tegang dan butuh menenangkan pikiran"
-        hrv_status_text = "HRV rendah (di bawah 0.4)" if latest_data['hrv_avg'] < 0.4 else "HRV normal"
-        
-        coaching_result = generate_stress_coaching_gemini(
-            user_mood=current_mood,
-            hrv_status=hrv_status_text,
-            time_of_day=datetime.now().strftime("%H:%M")
-        )
-        
-        st.markdown(f"**Hasil Coaching:**\n{coaching_result}")
-
-with col_i2:
-    st.subheader("Activity Pacing & Fisioterapi")
-    if st.session_state.user_log:
-        
-        # [PPS: Modul Rehabilitasi] Logika Activity Pacing Coach
-        if latest_data['hrv_avg'] < 0.5 or latest_data['stress_score'] > 7:
-            pacing_advice = "🚨 **Activity Pacing Coach:** Kelelahan terdeteksi (HRV rendah). Kurangi intensitas latihan 50% dan prioritaskan istirahat 30 menit."
-        else:
-            pacing_advice = "**Activity Pacing Coach:** Energi stabil. Pertahankan jadwal latihan Anda."
+        with col_input_2:
+            stress_score = st.slider("Stres Subjektif (0-10)", 0, 10, 6, key='stress')
+            hrv_avg = st.slider("HRV Rata-rata (0.0=Buruk, 1.0=Baik)", 0.0, 1.0, 0.65, 0.05, key='hrv')
             
-        st.warning(pacing_advice)
+            # Simulasi input status rehab/vision
+            video_rehab_status = st.selectbox(
+                "Feedback Vision/Rehab (Simulasi):", 
+                ["Good", "Poor_Posture", "Fatigue"], 
+                key='rehab_status'
+            )
+
+        submitted = st.form_submit_button("Simpan Log Baru & Hitung Risiko", type="primary")
+
+        if submitted:
+            new_log = {
+                'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M"),
+                'pain_score': pain_score,
+                'stiffness_score': st.slider("Kekakuan Pagi (0-10)", 0, 10, 5, key='stiffness'), # Ambil nilai dummy dari slider
+                'stress_score': stress_score,
+                'hrv_avg': hrv_avg,
+                'med_adherence': med_adherence / 100.0,
+                'video_rehab_status': video_rehab_status
+            }
+            st.session_state.user_log.append(new_log)
+            st.rerun() 
+
+    st.subheader("⚠️ Hasil Prediksi Risiko Flare (Anomaly Alert)")
+    if st.session_state.user_log:
+        latest_data = st.session_state.user_log[-1]
+        risk_prob = simulate_predict_flare_risk(latest_data)
+        prob_percent = risk_prob * 100
         
-        # [PPS: Modul Rehabilitasi] Simulasi Computer Vision Feedback
-        if latest_data['video_rehab_status'] == 'Poor_Posture':
-            st.error("**Feedback Vision:** Postur latihan buruk terdeteksi. Harap jaga punggung lurus.")
-        elif latest_data['video_rehab_status'] == 'Fatigue':
-            st.warning("**Feedback Vision:** Kelelahan terdeteksi saat latihan. Lakukan istirahat aktif.")
+        col_alert_1, col_alert_2, col_alert_3 = st.columns(3)
+        col_alert_1.metric("Probabilitas Flare (7 hari)", f"{prob_percent:.1f}%")
+        col_alert_2.metric("HRV Terbaru", f"{latest_data['hrv_avg']:.2f}")
+
+        if risk_prob > 0.75:
+            st.error(f"🚨 ALERT TINGGI: Risiko Flare sangat tinggi. Pemicu utama: Stres/HRV. Tindakan: Segera ke tab Intervensi.")
+        elif risk_prob > 0.55:
+            st.warning(f"⚠️ RISIKO MODERAT: Fokus pada manajemen stres.")
         else:
-            st.success("Feedback Vision: Latihan diselesaikan dengan postur yang baik.")
+            st.success(f"Risiko Flare Rendah.")
 
-st.markdown("---")
 
-# --- 5. Modul Integrasi Sistem (Dashboard Klinis) ---
-st.header("4. Dashboard Klinis & Integrasi EHR (Untuk Dokter)")
+# =========================================================================
+# === TAB 2: INTERVENSI STRES & REHABILITASI (Modul Kuratif/Rehabilitasi)
+# =========================================================================
 
-if st.session_state.user_log:
+with tab_intervensi:
+    st.header("Intervensi Cerdas Personal")
+
+    col_int_1, col_int_2 = st.columns(2)
+
+    with col_int_1:
+        st.subheader("🧘 Mindfulness & Relaksasi Coach (Gemini)")
+        if st.session_state.user_log:
+            latest_data = st.session_state.user_log[-1]
+            current_mood = "Frustrasi dan Tegang" if latest_data['stress_score'] > 7 else "Biasa Saja"
+            hrv_status_text = "HRV sangat rendah, sinyal istirahat" if latest_data['hrv_avg'] < 0.4 else "HRV normal"
+            
+            if st.button("Mulai Sesi Stress Coaching Adaptif", type='primary', disabled=(client is None)):
+                with st.spinner("Gemini menyiapkan panduan..."):
+                    coaching_result = generate_stress_coaching_gemini(current_mood, hrv_status_text, datetime.now().strftime("%H:%M"))
+                    st.markdown(f"**Hasil Coaching:**\n{coaching_result}")
+            if client is None: st.caption("Masukkan API Key untuk mengaktifkan fitur ini.")
+
+    with col_int_2:
+        st.subheader("🤸 Tele-Rehabilitasi & Pacing Coach")
+        if st.session_state.user_log:
+            latest_data = st.session_state.user_log[-1]
+
+            # Activity Pacing Coach (Gemini/ML Logic)
+            if latest_data['hrv_avg'] < 0.5 or latest_data['stress_score'] > 7:
+                pacing_advice = "🚨 **Pacing Coach:** Kelelahan/Stres tinggi terdeteksi. Kurangi intensitas latihan, prioritaskan istirahat."
+                st.error(pacing_advice)
+            else:
+                pacing_advice = "**Pacing Coach:** Energi stabil. Pertahankan jadwal latihan."
+                st.success(pacing_advice)
+            
+            # Computer Vision Feedback (Simulasi)
+            if latest_data['video_rehab_status'] == 'Poor_Posture':
+                st.error(f"**Vision Feedback:** Postur latihan buruk terdeteksi. Perlu koreksi segera! ")
+            elif latest_data['video_rehab_status'] == 'Fatigue':
+                st.warning(f"**Vision Feedback:** Deteksi kelelahan saat latihan. Harap berhenti.")
+            else:
+                st.info("Feedback Vision: Latihan diselesaikan dengan baik.")
+
+# =========================================================================
+# === TAB 3: DASHBOARD KLINIS & EHR (Modul Integrasi Sistem)
+# =========================================================================
+
+with tab_dashboard:
+    st.header("Dashboard Klinis & Integrasi EHR")
     
-    st.subheader("Ringkasan Klinis AI (Gemini)")
-    if st.button("Generate AI Summary untuk Reumatolog", key='generate_summary', type='primary'):
-        ai_summary = generate_clinician_summary(st.session_state.user_log)
-        st.info("Ringkasan ini ditujukan untuk tim klinis dan dapat diunggah ke EHR.")
-        st.markdown(ai_summary)
+    col_dash_1, col_dash_2 = st.columns([2, 1])
 
-    st.subheader("Prediksi Terapi Biologics (Simulasi ML)")
-    if st.button("Prediksi Respons Terapi Biologics", key='predict_drug'):
+    with col_dash_1:
+        st.subheader("Tren Aktivitas Penyakit")
+        if not df_log.empty:
+            df_log_viz = df_log.set_index('timestamp')[['pain_score', 'stress_score', 'hrv_avg']]
+            st.line_chart(df_log_viz)
+            st.caption("Grafik menunjukkan Nyeri (biru) dan HRV (hijau). Penurunan HRV (stres) seringkali mendahului lonjakan Nyeri.")
         
-        # [PPS: Modul Kuratif] Fitur: Predictive Therapy Tool
-        drug_a_prob = random.uniform(0.6, 0.9)
-        drug_b_prob = random.uniform(0.5, 0.8)
-        
-        st.code(
-            f"Probabilitas Remisi Drug A (TNF Inhibitor): {drug_a_prob:.2f}\n"
-            f"Probabilitas Remisi Drug B (IL-17 Inhibitor): {drug_b_prob:.2f}\n"
-            "\n**Rekomendasi ML:** Drug A direkomendasikan karena rasio efikasi-biaya yang lebih baik (Simulasi data cohort Singapura)."
-        )
+        st.subheader("Prediksi Terapi Biologics (Simulasi ML)")
+        if st.button("Prediksi Respons Terapi Biologics", key='predict_drug'):
+            drug_a_prob = random.uniform(0.65, 0.95)
+            drug_b_prob = random.uniform(0.5, 0.8)
+            st.code(
+                f"Probabilitas Remisi Drug A (TNF Inhibitor): {drug_a_prob:.2f}\n"
+                f"Probabilitas Remisi Drug B (IL-17 Inhibitor): {drug_b_prob:.2f}\n"
+                "\n**Rekomendasi ML:** Drug A direkomendasikan untuk pasien ini (Cost-Effective)."
+            )
 
-# Tampilkan log data mentah
-st.sidebar.title("Data Log Mentah")
-st.sidebar.json(st.session_state.user_log)
+    with col_dash_2:
+        st.subheader("Ringkasan Klinis AI (EHR)")
+        if st.session_state.user_log:
+            if st.button("Generate AI Summary (Gemini)", key='generate_summary', type='primary', disabled=(client is None)):
+                ai_summary = generate_clinician_summary(st.session_state.user_log)
+                st.info("Ringkasan Klinis:")
+                st.markdown(ai_summary)
+            if client is None: st.caption("Fitur AI dinonaktifkan tanpa API Key.")
+        
+        st.dataframe(df_log[['timestamp', 'pain_score', 'hrv_avg', 'med_adherence']].tail(5), use_container_width=True)
+        st.caption("5 Data log terakhir yang akan dikirim ke EHR.")
+
+# =========================================================================
+# === TAB 4: ASISTEN KESEHATAN PsA (Character Bot)
+# =========================================================================
+
+with tab_chatbot:
+    st.header("💬 Asisten Kesehatan PsA (Chatbot)")
+    st.caption("Tanya jawab 24/7 seputar PsA, gaya hidup, dan efek samping umum.")
+
+    # Tampilkan riwayat pesan
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Input pengguna (hanya aktif jika client tersedia)
+    if prompt := st.chat_input("Tanyakan sesuatu tentang PsA...", disabled=(client is None)):
+        
+        # Tambahkan pesan pengguna ke state
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # Dapatkan respons AI
+        with st.chat_message("assistant"):
+            full_response = generate_chatbot_response(prompt)
+            st.markdown(full_response)
+        
+        # Tambahkan respons AI ke state
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
+
+    if client is None: st.error("Chatbot dinonaktifkan. Harap masukkan API Key.")
