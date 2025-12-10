@@ -1,20 +1,3 @@
-Mohon maaf, terjadi kesalahan di mana AI model menghasilkan gambar sebagai respons atas permintaan Anda. Saya tidak berniat untuk mengulang kesalahan tersebut.
-
-Anda meminta pembaruan pada kode Streamlit (`streamlit_app_final_v3.py`) untuk menambahkan tiga fitur penting:
-
-1.  **Diagnosis Potensial** (Modul Preventif).
-2.  **Upload Foto** untuk Cek Psoriasis (Modul Preventif/Skrining).
-3.  **Data History Kesehatan** kita.
-
-Saya akan membuat satu tab baru (`tab_skrining`) untuk menampung fitur diagnostik potensial dan upload foto, serta menambahkan tampilan riwayat kesehatan yang lebih detail di Tab Dashboard.
-
-Berikut adalah kode yang **sudah diperbarui** dan **lengkap**:
-
------
-
-## 💻 `streamlit_app_final_v4.py`: Gemini PsA Intelligence System (Final + Diagnostik)
-
-```python
 import streamlit as st
 from google import genai
 from google.genai import types
@@ -34,7 +17,6 @@ try:
     MODEL_PRO_VISION = 'gemini-2.5-flash' # Model untuk analisis gambar
 except Exception:
     client = None
-    # Fitur AI akan dinonaktifkan jika kunci tidak valid
     
 # --- 1. Fungsi AI dan ML Inti ---
 
@@ -81,7 +63,7 @@ def analyze_skin_photo(image_file):
 
 
 def generate_clinician_summary(user_logs, user_history):
-    """[Gemini] Ringkasan Data Longitudinal (Modul Integrasi)."""
+    """[Gemini] Ringkasan Data Longitudinal (Modul Integrasi), kini mencakup riwayat kesehatan."""
     if not client: return "⚠️ Layanan Gemini dinonaktifkan."
     
     latest_logs = user_logs[-7:]
@@ -120,15 +102,18 @@ def generate_chatbot_response(prompt):
 # --- 2. Session State & Setup Halaman ---
 
 if 'user_log' not in st.session_state:
+    # Memuat dummy data untuk visualisasi awal
     st.session_state.user_log = [
-        {'timestamp': '2025-12-01 10:00', 'pain_score': 3, 'hrv_avg': 0.7, 'stress_score': 3, 'med_adherence': 1.0, 'video_rehab_status': 'Good'},
-        {'timestamp': '2025-12-03 10:00', 'pain_score': 5, 'hrv_avg': 0.4, 'stress_score': 7, 'med_adherence': 0.8, 'video_rehab_status': 'Poor_Posture'},
+        {'timestamp': '2025-12-01 10:00', 'pain_score': 3, 'stiffness_score': 4, 'hrv_avg': 0.7, 'stress_score': 3, 'med_adherence': 1.0, 'video_rehab_status': 'Good'},
+        {'timestamp': '2025-12-03 10:00', 'pain_score': 5, 'stiffness_score': 6, 'hrv_avg': 0.4, 'stress_score': 7, 'med_adherence': 0.8, 'video_rehab_status': 'Poor_Posture'},
+        {'timestamp': '2025-12-05 10:00', 'pain_score': 4, 'stiffness_score': 5, 'hrv_avg': 0.6, 'stress_score': 5, 'med_adherence': 1.0, 'video_rehab_status': 'Fatigue'}
     ]
 
 if 'user_history' not in st.session_state:
+    # Data History Kesehatan Baru
     st.session_state.user_history = {
         'diagnosis': 'Psoriasis Vulgaris (2020)',
-        'komorbiditas': 'Obesitas',
+        'komorbiditas': 'Obesitas, Hipertensi',
         'obat_saat_ini': 'Methotrexate 15mg/minggu'
     }
 
@@ -151,7 +136,7 @@ tab_log, tab_skrining, tab_intervensi, tab_dashboard, tab_chatbot = st.tabs(["�
 
 
 # =========================================================================
-# === TAB 1: LOG HARIAN & ALERT
+# === TAB 1: LOG HARIAN & ALERT (Semua fitur lama tetap ada)
 # =========================================================================
 
 with tab_log:
@@ -162,18 +147,17 @@ with tab_log:
 
         with col_input_1:
             pain_score = st.slider("Nyeri Sendi (0-10)", 0, 10, 5, key='pain')
+            stiffness_score = st.slider("Kekakuan Pagi (0-10)", 0, 10, 5, key='stiffness') # Fitur lama
             med_adherence = st.slider("Kepatuhan Obat (%)", 0, 100, 100, 10, key='med')
+
+        with col_input_2:
+            stress_score = st.slider("Stres Subjektif (0-10)", 0, 10, 6, key='stress')
+            hrv_avg = st.slider("HRV Rata-rata (0.0=Buruk, 1.0=Baik)", 0.0, 1.0, 0.65, 0.05, key='hrv')
             video_rehab_status = st.selectbox(
                 "Feedback Vision/Rehab (Simulasi):", 
                 ["Good", "Poor_Posture", "Fatigue"], 
                 key='rehab_status'
             )
-
-        with col_input_2:
-            stress_score = st.slider("Stres Subjektif (0-10)", 0, 10, 6, key='stress')
-            hrv_avg = st.slider("HRV Rata-rata (0.0=Buruk, 1.0=Baik)", 0.0, 1.0, 0.65, 0.05, key='hrv')
-            stiffness_score = st.slider("Kekakuan Pagi (0-10)", 0, 10, 5, key='stiffness')
-
 
         submitted = st.form_submit_button("Simpan Log Baru & Hitung Risiko", type="primary")
 
@@ -209,7 +193,7 @@ with tab_log:
 
 
 # =========================================================================
-# === TAB 2: SKRINING POTENSIAL & FOTO (Modul Preventif)
+# === TAB 2: SKRINING POTENSIAL & FOTO (Modul Preventif - FITUR BARU)
 # =========================================================================
 
 with tab_skrining:
@@ -218,21 +202,25 @@ with tab_skrining:
     col_diag_1, col_diag_2 = st.columns(2)
 
     with col_diag_1:
-        st.subheader("1. Diagnosis Potensial (PEST/TOPAS)")
+        st.subheader("1. Skrining Risiko PsA (PEST/TOPAS)")
         st.markdown(f"**Riwayat Kesehatan Terkini:**")
-        st.write(f"**Diagnosis Primer:** {st.session_state.user_history['diagnosis']}")
-        st.write(f"**Komorbiditas:** {st.session_state.user_history['komorbiditas']}")
-        st.write(f"**Obat Aktif:** {st.session_state.user_history['obat_saat_ini']}")
+        st.table(pd.DataFrame([
+            {"Kategori": "Diagnosis Primer", "Detail": st.session_state.user_history['diagnosis']},
+            {"Kategori": "Komorbiditas", "Detail": st.session_state.user_history['komorbiditas']},
+        ]))
         
-        # Simulasi PEST/Skrining PsA
-        st.subheader("Skrining Risiko PsA")
+        # Logika Simulasi PEST/Skrining PsA
+        st.subheader("Simulasi Skor Rujukan PsA")
         if st.session_state.user_log and st.button("Hitung Skor Risiko PsA (PEST/TOPAS)", type='secondary'):
-            # Logika Simulasi PEST: Jika ada Nyeri & Kekakuan, risiko PsA tinggi
-            if st.session_state.user_log[-1]['pain_score'] >= 5 and st.session_state.user_log[-1]['stiffness_score'] >= 5:
-                st.error("⚠️ RISIKO PSORIATIC ARTHRITIS TINGGI. Disarankan Rujukan Reumatolog.")
-                st.info("Skor PEST (Simulasi) > 3. Ada indikasi nyeri inflamasi sendi.")
+            latest_log = st.session_state.user_log[-1]
+            # Sederhana: Hitung PEST berdasarkan Nyeri (3 item) dan Kekakuan (2 item)
+            simulated_pest_score = (1 if latest_log['pain_score'] >= 5 else 0) + (1 if latest_log['stiffness_score'] >= 5 else 0) + random.choice([0, 1, 2])
+            
+            if simulated_pest_score >= 3:
+                st.error(f"⚠️ RISIKO PSORIATIC ARTHRITIS TINGGI. (Skor PEST: {simulated_pest_score}). Disarankan Rujukan Reumatolog.")
+                
             else:
-                st.success("Risiko PsA Rendah saat ini. Lanjutkan monitoring.")
+                st.success(f"Risiko PsA Rendah saat ini. (Skor PEST: {simulated_pest_score}).")
         
         st.caption("Diagnosis Potensial ini bersifat Skrining Awal (Modul Preventif).")
 
@@ -256,7 +244,7 @@ with tab_skrining:
 
 
 # =========================================================================
-# === TAB 3: INTERVENSI STRES & REHABILITASI
+# === TAB 3: INTERVENSI STRES & REHABILITASI (Semua fitur lama tetap ada)
 # =========================================================================
 
 with tab_intervensi:
@@ -299,7 +287,7 @@ with tab_intervensi:
                 st.info("Feedback Vision: Latihan diselesaikan dengan baik.")
 
 # =========================================================================
-# === TAB 4: DASHBOARD KLINIS & EHR (Modul Integrasi Sistem)
+# === TAB 4: DASHBOARD KLINIS & EHR (Semua fitur lama tetap ada)
 # =========================================================================
 
 with tab_dashboard:
@@ -312,7 +300,7 @@ with tab_dashboard:
         if not df_log.empty:
             df_log_viz = df_log.set_index('timestamp')[['pain_score', 'stress_score', 'hrv_avg']]
             st.line_chart(df_log_viz)
-            st.caption("Grafik menunjukkan Nyeri (biru) vs. HRV (hijau).")
+            st.caption("Grafik menunjukkan Nyeri (biru) vs. HRV (hijau). Penurunan HRV (stres) seringkali mendahului lonjakan Nyeri.")
         
         st.subheader("Prediksi Terapi Biologics (Simulasi ML)")
         if st.button("Prediksi Respons Terapi Biologics", key='predict_drug'):
@@ -332,11 +320,12 @@ with tab_dashboard:
             {"Kategori": "Obat Saat Ini", "Detail": st.session_state.user_history['obat_saat_ini']},
             {"Kategori": "Jumlah Log", "Detail": len(st.session_state.user_log)}
         ]
-        st.table(pd.DataFrame(history_data))
+        st.table(pd.DataFrame(history_data)) # FITUR BARU: Menampilkan riwayat kesehatan
 
         st.subheader("Ringkasan Klinis AI (EHR)")
         if st.session_state.user_log:
             if st.button("Generate AI Summary (Gemini)", key='generate_summary', type='primary', disabled=(client is None)):
+                # Memanggil generate_clinician_summary dengan data riwayat kesehatan
                 ai_summary = generate_clinician_summary(st.session_state.user_log, st.session_state.user_history)
                 st.info("Ringkasan Klinis:")
                 st.markdown(ai_summary)
@@ -346,7 +335,7 @@ with tab_dashboard:
         st.dataframe(df_log[['timestamp', 'pain_score', 'hrv_avg', 'med_adherence']].tail(5), use_container_width=True)
 
 # =========================================================================
-# === TAB 5: ASISTEN KESEHATAN PsA (Character Bot)
+# === TAB 5: ASISTEN KESEHATAN PsA (Character Bot) (Semua fitur lama tetap ada)
 # =========================================================================
 
 with tab_chatbot:
@@ -372,4 +361,3 @@ with tab_chatbot:
         st.session_state.messages.append({"role": "assistant", "content": full_response})
 
     if client is None: st.error("Chatbot dinonaktifkan. Harap masukkan API Key.")
-```
