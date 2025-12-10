@@ -1,20 +1,5 @@
-Anda benar, proyek sebesar ini memerlukan implementasi fungsionalitas yang lebih lengkap\!
-
-Saya akan menyediakan file kode backend Python (`pps_full.py`) yang **lebih lengkap** dengan memasukkan semua fitur dari PPS Anda. Ini akan mencakup:
-
-1.  **Integrasi Gemini** untuk **Coaching** dan **Ringkasan Klinis**.
-2.  **Simulasi Logika ML** untuk **Prediksi Risiko Flare**.
-3.  **Endpoint API** yang mewakili semua Modul (Preventif, Kuratif, Rehabilitasi, Integrasi Sistem).
-
-Ini akan bertindak sebagai **blueprint** fungsionalitas backend Anda.
-
------
-
-## 💻 `pps_full.py`: Implementasi Backend Komprehensif
-
-```python
 # pps_full.py - Implementasi Backend API Gemini PsA Intelligence System
-# Mengimplementasikan semua fitur utama dari PPS (Preventif, Kuratif, Rehabilitasi, Integrasi).
+# Pastikan Anda mengganti "YOUR_GEMINI_API_KEY" dengan kunci API Anda.
 
 from flask import Flask, request, jsonify
 from datetime import datetime
@@ -42,20 +27,15 @@ user_data_log = {}
 def simulate_predict_flare_risk(data):
     """
     [PPS: Modul Kuratif] SIMULASI ML: Prediksi risiko Flare (Stres/Penyakit).
-    Menggunakan logika berbasis Nyeri, Stres (HRV), dan Kepatuhan Obat.
     """
     pain_norm = data.get('pain_score', 0) / 10
     stress_norm = data.get('stress_score', 0) / 10
-    
-    # Kepatuhan obat rendah meningkatkan risiko
     adherence_impact = 1.0 - data.get('med_adherence', 1.0) 
-    # HRV rendah meningkatkan risiko
     hrv_impact = 1.0 - data.get('hrv_avg', 0.8) 
     
-    # Bobot simulasi risiko (Stres memiliki bobot tertinggi)
     risk_score = (pain_norm * 0.2) + (stress_norm * 0.3) + (adherence_impact * 0.3) + (hrv_impact * 0.2)
     
-    return min(risk_score * 0.9, 0.99) # Probabilitas risiko (0.0 hingga 0.99)
+    return min(risk_score * 0.9, 0.99)
 
 def generate_stress_coaching_gemini(user_mood, hrv_status, time_of_day):
     """
@@ -83,14 +63,14 @@ def generate_clinician_summary(user_logs):
     """
     if not client: return "⚠️ Fitur Gemini dinonaktifkan."
 
-    latest_logs = user_logs[-7:] # Ambil 7 hari/log terakhir
+    latest_logs = user_logs[-7:]
     
     summary_prompt = f"""
     Menganalisis log kesehatan pasien selama {len(user_logs)} entri.
     Data Log Terbaru: {latest_logs}
     Tolong buat ringkasan status pasien (max 3 paragraf) untuk Reumatolog, menyoroti:
-    1. Tren aktivitas penyakit (Nyeri/Kekakuan DAS/PASI - naik/turun).
-    2. Tingkat kepatuhan obat dan komplikasi/efek samping.
+    1. Tren aktivitas penyakit (Nyeri/Kekakuan).
+    2. Tingkat kepatuhan obat dan efek samping.
     3. Pengaruh Stres (HRV) terhadap gejala dalam seminggu terakhir.
     """
 
@@ -121,13 +101,12 @@ def log_activity():
         'hrv_avg': data.get('hrv_avg', 0.5), 
         'stress_score': data.get('stress_score', 5),
         'med_adherence': data.get('med_adherence', 1.0),
-        'video_rehab_status': data.get('video_rehab_status', 'N/A') # Untuk Modul Rehabilitasi
+        'video_rehab_status': data.get('video_rehab_status', 'N/A')
     }
     
     if user_id not in user_data_log: user_data_log[user_id] = []
     user_data_log[user_id].append(log_entry)
 
-    # Trigger ML Prediction setelah log baru masuk
     risk_prob = simulate_predict_flare_risk(log_entry)
     
     return jsonify({
@@ -171,10 +150,8 @@ def get_coaching_endpoint():
     data = request.json
     user_id = data.get('user_id')
 
-    # Ambil status HRV/Stres yang terakhir dari log (untuk personalisasi yang lebih baik)
     latest_log = user_data_log.get(user_id, [None])[-1]
     
-    # Asumsi status berdasarkan data
     user_mood = "Frustrasi dan Tegang" if latest_log and latest_log['stress_score'] > 7 else "Biasa Saja"
     hrv_status = "HRV sangat rendah, sinyal istirahat" if latest_log and latest_log['hrv_avg'] < 0.4 else "Normal" 
     time_of_day = datetime.now().strftime("%H:%M")
@@ -190,7 +167,6 @@ def get_coaching_endpoint():
 def rehab_feedback():
     """
     [PPS: Modul Rehabilitasi] Fitur: Computer Vision Sederhana & Activity Pacing Coach.
-    Simulasi feedback berdasarkan data video_rehab_status.
     """
     data = request.json
     status = data.get('video_rehab_status', 'Good')
@@ -198,7 +174,6 @@ def rehab_feedback():
     if status == 'Poor_Posture':
         feedback = "Gemini/Vision mendeteksi postur yang buruk. Harap jaga punggung lurus saat peregangan. Coba lagi dalam 30 menit."
     elif status == 'Fatigue':
-        # Feedback dari Activity Pacing Coach
         feedback = "Activity Pacing Coach: Deteksi kelelahan (berdasarkan HRV/waktu). Segera istirahat 20 menit sebelum latihan berikutnya."
     else:
         feedback = "Postur bagus! Latihan berhasil diselesaikan."
@@ -219,16 +194,12 @@ def ehr_summary(user_id):
     
     return jsonify({"summary": summary}), 200
 
-# --- ENDPOINT TAMBAHAN: PREDICTIVE THERAPY TOOL (Simulasi ML) ---
 @app.route('/api/predict_drug_response', methods=['POST'])
 def predict_drug_response():
     """
     [PPS: Modul Kuratif] Fitur: Predictive Therapy Tool (ML)
-    Membantu keputusan cost-effective Biologics.
     """
     data = request.json
-    # Asumsi input: [jenis_psa, komorbiditas, usia, riwayat_dmards]
-    
     # Simulasikan hasil prediksi ML:
     drug_a_prob = random.uniform(0.6, 0.9)
     drug_b_prob = random.uniform(0.5, 0.8)
@@ -245,4 +216,3 @@ if __name__ == '__main__':
     # Pastikan Anda sudah mengatur API Key sebelum menjalankan
     # Jika menggunakan lingkungan produksi, ganti debug=True
     app.run(debug=True, port=5000)
-```
