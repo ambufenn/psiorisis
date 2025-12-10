@@ -1,0 +1,18 @@
+# requirements.txt
+# Dependensi yang diperlukan untuk Backend Python (pps.py) dan Dashboard Streamlit.
+
+# --- Dependensi Inti Backend/API ---
+Flask                      # Framework web untuk membangun RESTful API (diperlukan untuk pps.py)
+numpy                      # Dasar untuk komputasi numerik dan manipulasi data (input ML)
+pandas                     # Untuk pemrosesan dan analisis data (sering digunakan sebelum ML)
+requests                   # Untuk melakukan HTTP requests (misalnya, jika Streamlit memanggil pps.py)
+
+# --- Dependensi Kecerdasan Buatan (AI/ML) ---
+google-genai               # Pustaka resmi Google untuk mengintegrasikan layanan Gemini (Coaching, Summary)
+scikit-learn               # Pustaka utama untuk Machine Learning (digunakan untuk memuat model ML seperti flare_predictor.pkl)
+
+# --- Dependensi Visualisasi/Dashboard (Jika menggunakan Streamlit) ---
+streamlit                  # Untuk membangun antarmuka web yang interaktif (dashboard klinis)
+
+# --- Dependensi Deployment/Operasional ---
+gunicorn                   # Server WSGI yang direkomendasikan untuk deployment Flask di lingkungan produksi
